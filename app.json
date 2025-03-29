@@ -15,7 +15,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.dungnguyen1806.DOffice"
     },
     "web": {
       "bundler": "metro",
@@ -36,6 +37,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "cc12e2ca-5403-4ca7-bf8c-5ee760f7374a"
+      }
+    },
+    "owner": "dungnguyen1806"
   }
 }
