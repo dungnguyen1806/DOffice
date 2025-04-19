@@ -9,7 +9,7 @@ import TextBox from "@/components/TextBox";
 
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyCX9gc40pdxln7jzbtc0RRlmHpQXNFlJ7s" });
+const ai = new GoogleGenAI({ apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY });
 
 async function fileToGenerativePart(path: string, mimeType: string): Promise<{ inlineData: { data: string; mimeType: string } }> {
     if (Platform.OS === 'web') {

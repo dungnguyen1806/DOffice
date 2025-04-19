@@ -22,7 +22,7 @@ export default function TabLayout() {
                 ),
             }} />
             <Tabs.Screen name="image" options={{
-                title: "Image",
+                title: "Anh yêu em",
                 tabBarIcon: ({ color, focused }) => (
                     <Ionicons name={focused ? "image" : "image-outline"} color={color} size={24} />
                 ),
