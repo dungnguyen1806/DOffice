@@ -7,7 +7,7 @@ import TextBox from "@/components/TextBox";
 
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: "AIzaSyCX9gc40pdxln7jzbtc0RRlmHpQXNFlJ7s" });
+const ai = new GoogleGenAI({ apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY });
 
 export default function App() {
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
