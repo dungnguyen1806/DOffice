@@ -5,11 +5,12 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
+import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 
 // --- Định nghĩa Type (Nếu cần type phức tạp hơn cho service) ---
 interface MockOcrService {
-    processImage: (uri: string) => Promise<string>;
+    processImage: (imageUri: string) => Promise<string>;
 }
 
 interface MockStorageService {
@@ -18,15 +19,17 @@ interface MockStorageService {
 
 // --- Giả lập Service với Type ---
 const mockOcrService: MockOcrService = {
-    processImage: async (uri) => {
-        console.log(`[Mock OCR TS] Processing image: ${uri}`);
+    processImage: async (imageUri: string) => {
+        console.log(`[Mock OCR TS] Processing image: ${imageUri}`);
         await new Promise(resolve => setTimeout(resolve, 1500));
         if (Math.random() < 0.1) {
             throw new Error("Lỗi nhận diện ngẫu nhiên!");
         }
-        return `TS: Đây là văn bản được nhận diện từ ảnh:\n${uri.split('/').pop()}\nTimestamp: ${new Date().toLocaleTimeString()}`;
+        return `TS: Đây là văn bản được nhận diện từ ảnh:\n${imageUri.split('/').pop()}\nTimestamp: ${new Date().toLocaleTimeString()}`;
     }
 };
+
+
 
 const mockStorageService: MockStorageService = {
     saveOcrResult: async (imageUri, textContent) => {
@@ -100,8 +103,6 @@ export default function OcrScreen() {
             const result: ImagePicker.ImagePickerResult = await launchFunction({
                 allowsEditing: false,
                 quality: 0.8,
-
-
             });
 
             // Kiểm tra kỹ hơn với type
