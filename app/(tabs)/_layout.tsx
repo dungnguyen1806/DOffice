@@ -20,7 +20,7 @@ export default function TabLayout() {
         route: any; // Type 'any' cho route vì type từ expo-router có thể phức tạp
         navigation: any;
     }) => BottomTabNavigationOptions) = ({ route }) => ({
-        initialRouteName: 'new_ocr',
+        initialRouteName: 'ocr',
         tabBarActiveTintColor: '#1E90FF',
         tabBarInactiveTintColor: 'gray',
         tabBarStyle: {
@@ -29,7 +29,7 @@ export default function TabLayout() {
         tabBarIcon: ({ focused, color, size }) => {
             let iconName: keyof typeof Ionicons.glyphMap = 'alert-circle'; // Default icon
 
-            if (route.name === 'new_ocr') {
+            if (route.name === 'ocr') {
                 iconName = getIconName('camera', focused);
             } else if (route.name === 'speech') {
                 iconName = getIconName('mic', focused);
@@ -52,9 +52,15 @@ export default function TabLayout() {
     return (
         <Tabs screenOptions={screenOptions}>
             <Tabs.Screen
-                name="new_ocr"
+                name="ocr"
                 options={{
                     title: 'Nhận diện Ảnh',
+                }}
+            />
+            <Tabs.Screen
+                name='speech'
+                options={{
+                    title: 'Nhận diện Âm thanh',
                 }}
             />
             <Tabs.Screen
@@ -66,10 +72,3 @@ export default function TabLayout() {
         </Tabs>
     );
 }
-
-{/* <Tabs.Screen
-                name="speech"
-                options={{
-                    title: 'Nhận diện Âm thanh',
-                }}
-            /> */}
