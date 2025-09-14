@@ -14,7 +14,7 @@ export default function IndexScreen(): React.JSX.Element {
         // không nằm trong lịch sử điều hướng (người dùng không thể back lại đây từ tabs)
         // Điều hướng đến tab mặc định bạn muốn người dùng thấy đầu tiên
         // (có thể là 'ocr', 'speech', hoặc 'history' tùy theo cài đặt của bạn)
-        router.replace('/new_ocr'); // Hoặc '/history' nếu bạn đặt nó làm initialRouteName trong tabs layout
+        router.replace('/ocr'); // Hoặc '/history' nếu bạn đặt nó làm initialRouteName trong tabs layout
     };
 
     return (

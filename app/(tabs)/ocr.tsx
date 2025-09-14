@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, Button, Image, TextInput, StyleSheet, ScrollView,
     ActivityIndicator, Alert, Platform, Dimensions, TouchableOpacity
@@ -8,28 +8,129 @@ import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 
-// --- Định nghĩa Type (Nếu cần type phức tạp hơn cho service) ---
-interface MockOcrService {
-    processImage: (imageUri: string) => Promise<string>;
+// Định nghĩa trạng thái Job (phải khớp với backend)
+enum JobStatus {
+    PENDING = "PENDING",
+    PROCESSING = "PROCESSING",
+    COMPLETED = "COMPLETED",
+    FAILED = "FAILED",
 }
+
+interface WebSocketMessage {
+    job_id: string;
+    status: JobStatus;
+    text?: string; // Tên property khớp với backend
+    error?: string; // Tên property khớp với backend
+    filename?: string;
+    type: 'status_update' | 'job_completed' | 'job_failed' | 'error';
+}
+
+interface OcrService {
+    submitImageForOcr: (imageUri: string) => Promise<string>;
+    listenToOcrJob: (jobId: string, onUpdate: (message: WebSocketMessage) => void) => WebSocket;
+}
+
+// Định nghĩa URL backend WebSocket
+const BACKEND_BASE_URL = 'https://doffice-backend.onrender.com/api/v1'; // Base URL cho API
+const BACKEND_WS_BASE_URL = 'wss://doffice-backend.onrender.com/api/v1'; // Base URL cho WebSocket (ws hoặc wss)
+
+
+// interface OcrService {
+//     processImage: (imageUri: string) => Promise<string>;
+// }
 
 interface MockStorageService {
     saveOcrResult: (imageUri: string, textContent: string) => Promise<string>; // Trả về ID dạng string
 }
 
-// --- Giả lập Service với Type ---
-const mockOcrService: MockOcrService = {
-    processImage: async (imageUri: string) => {
-        console.log(`[Mock OCR TS] Processing image: ${imageUri}`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        if (Math.random() < 0.1) {
-            throw new Error("Lỗi nhận diện ngẫu nhiên!");
+const OcrService: OcrService = {
+    // Hàm gửi ảnh và nhận job_id
+    submitImageForOcr: async (imageUri: string): Promise<string> => {
+        console.log('[OCR Service] Submitting image for OCR:', imageUri);
+
+        const formData = new FormData();
+
+        const filename = imageUri.split('/').pop() || `photo.jpg`;
+        const match = /\.(\w+)$/.exec(filename || '');
+        const fileType = match ? `image/${match[1]}` : `image`;
+
+        formData.append('file', {
+            uri: imageUri,
+            name: filename,
+            type: fileType,
+        } as any); // Type assertion for FormData.append is often needed in RN
+
+        const response = await fetch(`${BACKEND_BASE_URL}/submit`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                // Do not set Content-Type for FormData, browser/RN will do it with boundary
+                // 'Content-Type': 'multipart/form-data',
+            },
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to submit image for OCR: ${response.status} - ${errorText}`);
         }
-        return `TS: Đây là văn bản được nhận diện từ ảnh:\n${imageUri.split('/').pop()}\nTimestamp: ${new Date().toLocaleTimeString()}`;
+
+        const result: { job_id: string; status: string; message: string } = await response.json();
+        console.log('[OCR Service] Job submitted:', result.job_id);
+        return result.job_id;
+    },
+
+    // Hàm mở kết nối WebSocket và lắng nghe cập nhật
+    listenToOcrJob: (jobId: string, onUpdate: (message: WebSocketMessage) => void): WebSocket => {
+        const wsUrl = `${BACKEND_WS_BASE_URL}/ws/status/${jobId}`;
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log(`[WebSocket] Connected to ${wsUrl}`);
+            onUpdate({ job_id: jobId, status: JobStatus.PENDING, type: 'status_update', filename: '' }); // Initial state
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const message: WebSocketMessage = JSON.parse(event.data as string);
+                console.log(`[WebSocket] Received message for job ${jobId}:`, message);
+                onUpdate(message);
+            } catch (e) {
+                console.error(`[WebSocket] Failed to parse message for job ${jobId}:`, event.data, e);
+                onUpdate({
+                    job_id: jobId,
+                    status: JobStatus.FAILED,
+                    error: `Lỗi phân tích dữ liệu từ server: ${e}`,
+                    type: 'error'
+                });
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error(`[WebSocket] Error for job ${jobId}:`, error);
+            onUpdate({
+                job_id: jobId,
+                status: JobStatus.FAILED,
+                error: `Lỗi kết nối WebSocket: ${error || 'Unknown error'}`,
+                type: 'error'
+            });
+        };
+
+        ws.onclose = (event) => {
+            console.log(`[WebSocket] Closed for job ${jobId}: Code=${event.code}, Reason=${event.reason}, Clean=${event.wasClean}`);
+            // if (!event.wasClean) {
+            //     // If the connection was not closed cleanly, it might be an error
+            //     onUpdate({
+            //         job_id: jobId,
+            //         status: JobStatus.FAILED,
+            //         error: `Kết nối WebSocket bị đóng bất ngờ (Code: ${event.code})`,
+            //         type: 'error'
+            //     });
+            // }
+        };
+
+        return ws;
     }
 };
-
-
 
 const mockStorageService: MockStorageService = {
     saveOcrResult: async (imageUri, textContent) => {
@@ -52,6 +153,9 @@ export default function OcrScreen() {
     const [error, setError] = useState<string | null>(null);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [hasGalleryPermission, setHasGalleryPermission] = useState<boolean | null>(null);
+    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+    const wsRef = useRef<WebSocket | null>(null); // Ref để lưu trữ đối tượng WebSocket
+
 
     // --- Logic xin quyền ---
     const requestPermissions = useCallback(async () => {
@@ -74,6 +178,17 @@ export default function OcrScreen() {
     }, [requestPermissions]);
     // --- Kết thúc Logic xin quyền ---
 
+    // Dọn dẹp WebSocket khi component unmount hoặc khi có job mới
+    useEffect(() => {
+        return () => {
+            if (wsRef.current) {
+                console.log("[WebSocket Cleanup] Closing previous WebSocket.");
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+        };
+    }, []); // Chạy một lần khi mount và cleanup khi unmount
+
     // --- Các hàm xử lý với Type ---
     const handleAction = async (actionType: 'camera' | 'gallery'): Promise<void> => {
         let permissionGranted: boolean | null = false;
@@ -94,9 +209,20 @@ export default function OcrScreen() {
             return;
         }
 
+        // Đóng kết nối WebSocket cũ nếu có
+        if (wsRef.current) {
+            console.log("[WebSocket] Closing existing WebSocket for new action.");
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+
         setImageUri(null);
         setExtractedText('');
         setError(null);
+        setIsLoading(true); // Bắt đầu loading khi chọn ảnh
+        setCurrentJobId(null); // Reset current job ID
+
+        // TODO: start from here
 
         try {
             // Sử dụng type ImagePickerResult từ expo-image-picker
@@ -110,8 +236,55 @@ export default function OcrScreen() {
                 const selectedAsset = result.assets[0];
                 if (selectedAsset.uri) {
                     setImageUri(selectedAsset.uri);
-                    await processImage(selectedAsset.uri);
+                    const jobId = await OcrService.submitImageForOcr(selectedAsset.uri);
+                    setCurrentJobId(jobId);
+
+                    // Mở WebSocket và lắng nghe cập nhật
+                    wsRef.current = OcrService.listenToOcrJob(jobId, (message) => {
+                        // Cập nhật UI dựa trên thông điệp WebSocket
+                        if (message.job_id === jobId) { // Đảm bảo thông điệp đúng job
+                            switch (message.type) {
+                                case 'status_update':
+                                    if (message.status === JobStatus.PROCESSING) {
+                                        setIsLoading(true);
+                                        setError(null);
+                                    } else if (message.status === JobStatus.PENDING) {
+                                        // Vẫn đang chờ, giữ loading
+                                        setIsLoading(true);
+                                        setError(null);
+                                    }
+                                    console.log(`Job ${jobId} Status: ${message.status}`);
+                                    break;
+                                case 'job_completed':
+                                    setExtractedText(message.text || '');
+                                    setIsLoading(false);
+                                    setError(null);
+                                    console.log(`Job ${jobId} Completed! Result:`, message.text);
+                                    // Optionally close websocket here if it's job-specific
+                                    if (wsRef.current) {
+                                        wsRef.current.close();
+                                        wsRef.current = null;
+                                    }
+                                    break;
+                                case 'job_failed':
+                                case 'error': // Backend gửi type 'error' nếu job_id không tồn tại hoặc lỗi chung
+                                    setError(`Lỗi: ${message.error || 'Unknown error'}`);
+                                    setIsLoading(false);
+                                    setExtractedText('');
+                                    console.error(`Job ${jobId} Failed! Error:`, message.error);
+                                    if (wsRef.current) {
+                                        wsRef.current.close();
+                                        wsRef.current = null;
+                                    }
+                                    break;
+                            }
+                        }
+                    });
+                } else {
+                    setIsLoading(false); // Ngừng loading nếu không có URI hợp lệ
                 }
+            } else {
+                setIsLoading(false); // Ngừng loading nếu hủy chọn ảnh
             }
         } catch (err: any) { // Bắt lỗi với type any hoặc unknown
             console.error(`Error launching ${actionType}:`, err);
@@ -121,20 +294,7 @@ export default function OcrScreen() {
     };
 
     const processImage = async (uri: string): Promise<void> => {
-        if (!uri) return;
-        setIsLoading(true);
-        setExtractedText('');
-        setError(null);
-        try {
-            const text = await mockOcrService.processImage(uri);
-            setExtractedText(text);
-        } catch (err: any) {
-            console.error("OCR Error:", err);
-            setError(`Lỗi nhận diện: ${err.message || 'Unknown error'}`);
-            Alert.alert("Lỗi nhận diện", "Không thể xử lý ảnh này. Vui lòng thử lại với ảnh khác.");
-        } finally {
-            setIsLoading(false);
-        }
+        console.warn("processImage is no longer directly called. Use WebSocket for async processing.");
     };
 
     const handleCopyText = async (): Promise<void> => {
@@ -168,7 +328,7 @@ export default function OcrScreen() {
     };
     // --- Kết thúc Các hàm xử lý ---
 
-    // --- Render UI (Tương tự JS, chỉ cần đảm bảo props đúng type nếu có) ---
+    // --- Render UI ---
     return (
         <ScrollView contentContainerStyle={styles.container}>
             {/* Phần chọn/chụp ảnh */}
@@ -239,7 +399,7 @@ export default function OcrScreen() {
     );
 }
 
-// --- Styles (Giữ nguyên như phiên bản JS) ---
+// --- Style ---
 const styles = StyleSheet.create({
     container: {
         flexGrow: 1,
