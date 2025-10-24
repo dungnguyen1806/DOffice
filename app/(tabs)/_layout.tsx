@@ -7,11 +7,11 @@ import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 // Hàm trợ giúp để lấy tên icon phù hợp cho từng platform
 const getIconName = (name: keyof typeof Ionicons.glyphMap, focused: boolean): keyof typeof Ionicons.glyphMap => {
     // Đảm bảo trả về key hợp lệ của Ionicons.glyphMap
-    const baseName = name.replace('-outline', '') as keyof typeof Ionicons.glyphMap; // Lấy tên gốc
+    const baseName = name.replace('-outline', '') as keyof typeof Ionicons.glyphMap; 
     if (Platform.OS === 'ios') {
         return focused ? baseName : (`${baseName}-outline` as keyof typeof Ionicons.glyphMap);
     } else {
-        return focused ? baseName : (`${baseName}-outline` as keyof typeof Ionicons.glyphMap); // Hoặc dùng một logic khác cho Android nếu muốn
+        return focused ? baseName : (`${baseName}-outline` as keyof typeof Ionicons.glyphMap); 
     }
 };
 
