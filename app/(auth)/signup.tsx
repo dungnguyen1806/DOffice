@@ -24,18 +24,38 @@ export default function SignUpScreen() {
 
     try {
       await signUp(email, password);
-      // The useProtectedRoute hook in the layout will handle the redirect automatically.
+      // The useProtectedRoute hook will handle the redirect.
     } catch (err: any) {
-      // The backend returns a 400 error if the email already exists.
-      const detail = err.response?.data?.detail || 'An unexpected error occurred.';
-      setError(detail);
+      console.log("Error response:", err.response?.data);
+
+      let errorMessage = 'Lỗi không xác định.';
+
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+
+        if (Array.isArray(detail)) {
+          // CASE 1: Pydantic Validation Error (Array of objects)
+          errorMessage = detail.map((item: any) => item.msg).join('\n');
+        } else if (typeof detail === 'string') {
+          // CASE 2: Standard HTTPException (String)
+          errorMessage = detail;
+        } else {
+          // CASE 3: Unknown object structure
+          errorMessage = JSON.stringify(detail);
+        }
+      } else if (err.message) {
+         // Network errors or other axios errors
+         errorMessage = err.message;
+      }
+
+      setError(errorMessage);
       setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.title}>Tạo tài khoản</Text>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -69,17 +89,18 @@ export default function SignUpScreen() {
       )}
       
       <Pressable onPress={() => router.push('/login')} style={styles.link}>
-        <Text>Already have an account? Sign In</Text>
+        <Text style={styles.linkText}>Đã có tài khoản? Đăng nhập tại đây</Text>
       </Pressable>
     </View>
   );
 }
 
-// Add some basic styling
+// --- Updated Styles ---
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: 20 },
   title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
   input: { borderWidth: 1, borderColor: 'gray', padding: 10, marginVertical: 10, borderRadius: 5 },
   errorText: { color: 'red', textAlign: 'center', marginBottom: 10 },
   link: { marginTop: 15, alignItems: 'center' },
+  linkText: { color: '#007AFF' }
 });

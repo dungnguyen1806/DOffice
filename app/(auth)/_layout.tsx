@@ -13,13 +13,13 @@ export default function AuthLayout() {
       <Stack.Screen
         name="login" // This refers to login.tsx
         options={{
-          headerShown: false, // Hides the top navigation bar for a cleaner look
+          headerShown: true, // Hides the top navigation bar for a cleaner look
         }}
       />
       <Stack.Screen
         name="signup" // This refers to signup.tsx
         options={{
-          headerShown: false, // Also hide the header on the signup screen
+          headerShown: true, // Also hide the header on the signup screen
         }}
       />
     </Stack>

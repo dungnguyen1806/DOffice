@@ -1,38 +1,40 @@
 // app/_layout.tsx
+
 import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { AuthProvider, useAuth } from '../context/AuthContext'; // Import your provider and hook
+import { AuthProvider, useAuth } from '../context/AuthContext';
 
-// This hook will protect the route access based on authentication state.
 const useProtectedRoute = () => {  
   const segments = useSegments();
   const router = useRouter();
-  const { user, isLoading } = useAuth();
+  const { user, isGuest, isLoading } = useAuth(); // <-- Get isGuest state
 
   useEffect(() => {
-    // Don't run the effect until loading is complete
     if (isLoading) return;
     
-    const inAuthGroup = String(segments[0]) === '(auth)';
+    const inTabsGroup = segments[0] === '(tabs)';
 
-    if (!user && !inAuthGroup) {
-      // If the user is not signed in and the initial segment is not '(auth)',
-      // redirect them to the login page.
-      router.replace('/login' as any);
-    } else if (user && inAuthGroup) {
-      // If the user is signed in and the initial segment is '(auth)',
-      // redirect them to the main app screen.
+    // Check if the user is in any of the routes that are NOT the entry screen (index).
+    const isPublicRoute = !inTabsGroup;;
+
+    if (!user && !isGuest && !isPublicRoute) {
+      // If not logged in AND not a guest, and trying to access the app,
+      // redirect to the main welcome screen (index).
+      router.replace('/');
+    } else if ((user || isGuest) && isPublicRoute) {
+      // If logged in OR a guest, but currently on the index page,
+      // send them into the app.
       router.replace('/ocr');
     }
-  }, [user, isLoading, segments, router]);
+  }, [user, isGuest, isLoading, segments, router]);
 };
 
-// Main layout component
 const RootLayoutNav = () => {
-  useProtectedRoute(); // The gatekeeper hook
-
+  useProtectedRoute();
+  
   return (
     <Stack>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
     </Stack>

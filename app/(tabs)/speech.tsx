@@ -1,159 +1,31 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, Button, TextInput, StyleSheet, ScrollView,
-    ActivityIndicator, Alert, Platform, Dimensions, TouchableOpacity
+    ActivityIndicator, Alert, TouchableOpacity
 } from 'react-native';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-
-// Định nghĩa trạng thái Job (phải khớp với backend)
-enum JobStatus {
-    PENDING = "PENDING",
-    PROCESSING = "PROCESSING",
-    COMPLETED = "COMPLETED",
-    FAILED = "FAILED",
-}
-
-// Định nghĩa cấu trúc thông điệp WebSocket từ backend
-interface WebSocketMessage {
-    job_id: string;
-    status: JobStatus;
-    text?: string; // Kết quả transcribe (tên property khớp với backend)
-    error?: string; // Tên property khớp với backend
-    filename?: string;
-    type: 'status_update' | 'job_completed' | 'job_failed' | 'error';
-}
-
-interface SpeechToTextService {
-    submitAudioForTranscribe: (audioUri: string) => Promise<string>;
-    listenToTranscribeJob: (jobId: string, onUpdate: (message: WebSocketMessage) => void) => WebSocket;
-}
-
-interface MockStorageService {
-    saveSpeechResult: (audioUri: string, textContent: string) => Promise<string>; // Trả về ID dạng string
-}
-
-// Định nghĩa URL backend WebSocket
-const BACKEND_BASE_URL = 'https://doffice-backend.onrender.com/api/v1'; // Base URL cho API
-const BACKEND_WS_BASE_URL = 'wss://doffice-backend.onrender.com/api/v1'; // Base URL cho WebSocket (ws hoặc wss)
-
-const SpeechToTextService: SpeechToTextService = {
-    // Hàm gửi audio và nhận job_id
-    submitAudioForTranscribe: async (audioUri: string): Promise<string> => {
-        console.log('[STT Service] Submitting audio for transcribe:', audioUri);
-
-        const formData = new FormData();
-
-        const filename = audioUri.split('/').pop() || `audio.m4a`;
-        const match = /\.(\w+)$/.exec(filename || '');
-        // Cần đảm bảo rằng fileType đúng với backend mong đợi (ví dụ: audio/mpeg cho mp3, audio/wav, audio/flac, audio/x-m4a cho m4a)
-        const fileType = match ? `audio/${match[1]}` : `audio/mpeg`; // Mặc định là mpeg nếu không tìm thấy, hoặc điều chỉnh cho phù hợp
-
-        formData.append('file', {
-            uri: audioUri,
-            name: filename,
-            type: fileType,
-        } as any); // Type assertion for FormData.append is often needed in RN
-
-        const response = await fetch(`${BACKEND_BASE_URL}/submit`, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                // Do not set Content-Type for FormData, browser/RN will do it with boundary
-            },
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to submit audio for transcribe: ${response.status} - ${errorText}`);
-        }
-
-        const result: { job_id: string; status: string; message: string } = await response.json();
-        console.log('[STT Service] Job submitted:', result.job_id);
-        return result.job_id;
-    },
-
-    // Hàm mở kết nối WebSocket và lắng nghe cập nhật
-    listenToTranscribeJob: (jobId: string, onUpdate: (message: WebSocketMessage) => void): WebSocket => {
-        const wsUrl = `${BACKEND_WS_BASE_URL}/ws/status/${jobId}`;
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-            console.log(`[WebSocket] Connected to ${wsUrl}`);
-            onUpdate({ job_id: jobId, status: JobStatus.PENDING, type: 'status_update', filename: '' }); // Initial state
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const message: WebSocketMessage = JSON.parse(event.data as string);
-                console.log(`[WebSocket] Received message for job ${jobId}:`, message);
-                onUpdate(message);
-            } catch (e) {
-                console.error(`[WebSocket] Failed to parse message for job ${jobId}:`, event.data, e);
-                onUpdate({
-                    job_id: jobId,
-                    status: JobStatus.FAILED,
-                    error: `Lỗi phân tích dữ liệu từ server: ${e}`,
-                    type: 'error'
-                });
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error(`[WebSocket] Error for job ${jobId}:`, error);
-            onUpdate({
-                job_id: jobId,
-                status: JobStatus.FAILED,
-                error: `Lỗi kết nối WebSocket: ${error || 'Unknown error'}`,
-                type: 'error'
-            });
-        };
-
-        ws.onclose = (event) => {
-            console.log(`[WebSocket] Closed for job ${jobId}: Code=${event.code}, Reason=${event.reason}, Clean=${event.wasClean}`);
-            // if (!event.wasClean) {
-            //     // If the connection was not closed cleanly, it might be an error
-            //     onUpdate({
-            //         job_id: jobId,
-            //         status: JobStatus.FAILED,
-            //         error: `Kết nối WebSocket bị đóng bất ngờ (Code: ${event.code})`,
-            //         type: 'error'
-            //     });
-            // }
-        };
-
-        return ws;
-    }
-};
-
-const mockStorageService: MockStorageService = {
-    saveSpeechResult: async (audioUri, textContent) => {
-        console.log(`[Mock Storage TS] Saving STT result for audio: ${audioUri}`);
-        console.log(`[Mock Storage TS] Text content: ${textContent.substring(0, 50)}...`);
-        // Giả lập độ trễ lưu trữ
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return `stt_ts_${Date.now()}`;
-    }
-};
-// --- Kết thúc Giả lập Service ---
-
-const screenWidth = Dimensions.get('window').width;
+import { useAuth } from '@/context/AuthContext';
+import { submitJob, BACKEND_WS_URL } from '../../api/client';
+import { JobStatus, WebSocketMessage } from '../../types/jobs';
 
 export default function SpeechToTextScreen() {
+    const { user } = useAuth();
+
     // --- State với Type ---
     const [recording, setRecording] = useState<Audio.Recording | undefined>();
     const [recordingUri, setRecordingUri] = useState<string | null>(null);
     const [extractedText, setExtractedText] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [isSaving, setIsSaving] = useState<boolean>(false);
+    
+    const [hasBeenSaved, setHasBeenSaved] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [hasMicrophonePermission, setHasMicrophonePermission] = useState<boolean | null>(null);
     const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = useState<boolean>(false);
-    const [currentJobId, setCurrentJobId] = useState<string | null>(null); // State cho Job ID
+    const [currentJobId, setCurrentJobId] = useState<string | number | null>(null); // State cho Job ID
     const wsRef = useRef<WebSocket | null>(null); // Ref để lưu trữ đối tượng WebSocket
 
     // --- Logic xin quyền ---
@@ -189,9 +61,62 @@ export default function SpeechToTextScreen() {
                 setIsPlaying(false);
             }
         };
-    }, []);
+    }, [soundObject]);
+
+    const listenToJob = (jobId: number | string) => {
+        const wsUrl = `${BACKEND_WS_URL}/ws/status/${jobId}`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => console.log(`[WebSocket] Connected for job ${jobId}`);
+        ws.onmessage = (event) => {
+            try {
+                const message: WebSocketMessage = JSON.parse(event.data);
+                if (String(message.job_id) === String(jobId)) {
+                    switch (message.type) {
+                        case 'status_update':
+                            if (message.status === JobStatus.PROCESSING) setIsLoading(true);
+                            break;
+                        case 'job_completed':
+                            setExtractedText(message.text || '');
+                            setIsLoading(false);
+                            setHasBeenSaved(false); // Reset save confirmation
+                            break;
+                        case 'job_failed':
+                        case 'error':
+                            setError(`Lỗi: ${message.error || 'Unknown error'}`);
+                            setIsLoading(false);
+                            break;
+                    }
+                }
+            } catch (e) {
+                console.error(`[WebSocket] Failed to parse message:`, e);
+                setError('Lỗi kết nối máy chủ.');
+                setIsLoading(false);
+            }
+        };
+        ws.onerror = (error) => {
+            console.error(`[WebSocket] Error for job ${jobId}:`, error);
+            setError('Lỗi kết nối WebSocket.');
+            setIsLoading(false);
+        };
+        ws.onclose = () => console.log(`[WebSocket] Closed for job ${jobId}`);
+    };
 
     // --- Các hàm xử lý với Type ---
+    const handleFileSubmit = async (uri: string) => {
+        try {
+            const response = await submitJob(uri);
+            const { job_id } = response.data;
+            setCurrentJobId(job_id);
+            listenToJob(job_id);
+        } catch (err: any) {
+            console.error(`Error in handleFileSubmit:`, err.response?.data || err.message);
+            setError(`Không thể gửi yêu cầu. Lỗi: ${err.response?.data?.detail || err.message}`);
+            setIsLoading(false);
+        }
+    };
+    
     const startRecording = async (): Promise<void> => {
         if (hasMicrophonePermission === false) {
             Alert.alert("Thiếu quyền", "Vui lòng cấp quyền truy cập Micro trong cài đặt.");
@@ -238,6 +163,7 @@ export default function SpeechToTextScreen() {
 
         setIsLoading(true); // Bắt đầu hiển thị loading khi dừng và xử lý
         setError(null);
+        setHasBeenSaved(false);
 
         try {
             await recording.stopAndUnloadAsync();
@@ -251,49 +177,7 @@ export default function SpeechToTextScreen() {
             console.log('Recording stopped and stored at', uri);
 
             if (uri) {
-                const jobId = await SpeechToTextService.submitAudioForTranscribe(uri);
-                setCurrentJobId(jobId);
-
-                // Mở WebSocket và lắng nghe cập nhật
-                wsRef.current = SpeechToTextService.listenToTranscribeJob(jobId, (message) => {
-                    // Cập nhật UI dựa trên thông điệp WebSocket
-                    if (message.job_id === jobId) { // Đảm bảo thông điệp đúng job
-                        switch (message.type) {
-                            case 'status_update':
-                                if (message.status === JobStatus.PROCESSING) {
-                                    setIsLoading(true);
-                                    setError(null);
-                                } else if (message.status === JobStatus.PENDING) {
-                                    setIsLoading(true); // Vẫn đang chờ
-                                    setError(null);
-                                }
-                                console.log(`Job ${jobId} Status: ${message.status}`);
-                                break;
-                            case 'job_completed':
-                                setExtractedText(message.text || '');
-                                setIsLoading(false);
-                                setError(null);
-                                console.log(`Job ${jobId} Completed! Result:`, message.text);
-                                // Đóng websocket khi job hoàn thành
-                                if (wsRef.current) {
-                                    wsRef.current.close();
-                                    wsRef.current = null;
-                                }
-                                break;
-                            case 'job_failed':
-                            case 'error': // Backend gửi type 'error' nếu job_id không tồn tại hoặc lỗi chung
-                                setError(`Lỗi: ${message.error || 'Unknown error'}`);
-                                setIsLoading(false);
-                                setExtractedText('');
-                                console.error(`Job ${jobId} Failed! Error:`, message.error);
-                                if (wsRef.current) {
-                                    wsRef.current.close();
-                                    wsRef.current = null;
-                                }
-                                break;
-                        }
-                    }
-                });
+                await handleFileSubmit(uri);
             } else {
                 setIsLoading(false); // Ngừng loading nếu không có URI hợp lệ
             }
@@ -320,6 +204,7 @@ export default function SpeechToTextScreen() {
         setError(null);
         setIsLoading(true); // Bắt đầu loading khi chọn file
         setCurrentJobId(null); // Reset job ID
+        setHasBeenSaved(false);
 
         try {
             const result = await DocumentPicker.getDocumentAsync({
@@ -327,57 +212,12 @@ export default function SpeechToTextScreen() {
                 copyToCacheDirectory: true, // Quan trọng để đảm bảo file có thể được đọc
             });
 
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                const pickedAsset = result.assets[0];
-                if (pickedAsset.uri) {
-                    setRecordingUri(pickedAsset.uri); // Sử dụng recordingUri để tái sử dụng logic
-                    // --- Gửi job và lắng nghe WebSocket ---
-                    const jobId = await SpeechToTextService.submitAudioForTranscribe(pickedAsset.uri);
-                    setCurrentJobId(jobId);
-
-                    wsRef.current = SpeechToTextService.listenToTranscribeJob(jobId, (message) => {
-                        // Cập nhật UI dựa trên thông điệp WebSocket
-                        if (message.job_id === jobId) {
-                            switch (message.type) {
-                                case 'status_update':
-                                    if (message.status === JobStatus.PROCESSING) {
-                                        setIsLoading(true);
-                                        setError(null);
-                                    } else if (message.status === JobStatus.PENDING) {
-                                        setIsLoading(true); // Vẫn đang chờ
-                                        setError(null);
-                                    }
-                                    console.log(`Job ${jobId} Status: ${message.status}`);
-                                    break;
-                                case 'job_completed':
-                                    setExtractedText(message.text || '');
-                                    setIsLoading(false);
-                                    setError(null);
-                                    console.log(`Job ${jobId} Completed! Result:`, message.text);
-                                    if (wsRef.current) {
-                                        wsRef.current.close();
-                                        wsRef.current = null;
-                                    }
-                                    break;
-                                case 'job_failed':
-                                case 'error':
-                                    setError(`Lỗi: ${message.error || 'Unknown error'}`);
-                                    setIsLoading(false);
-                                    setExtractedText('');
-                                    console.error(`Job ${jobId} Failed! Error:`, message.error);
-                                    if (wsRef.current) {
-                                        wsRef.current.close();
-                                        wsRef.current = null;
-                                    }
-                                    break;
-                            }
-                        }
-                    });
-                } else {
-                    setIsLoading(false); // Ngừng loading nếu không có URI hợp lệ
-                }
+            if (!result.canceled && result.assets && result.assets[0].uri) {
+                const uri = result.assets[0].uri;
+                setRecordingUri(uri);
+                await handleFileSubmit(uri);
             } else {
-                setIsLoading(false); // Ngừng loading nếu hủy chọn file
+                setIsLoading(false);
             }
         } catch (err: any) {
             console.error("Error picking audio file:", err);
@@ -385,10 +225,6 @@ export default function SpeechToTextScreen() {
             Alert.alert("Lỗi chọn file", "Đã xảy ra lỗi khi chọn file âm thanh.");
             setIsLoading(false); // Dừng loading nếu có lỗi
         }
-    };
-
-    const processAudio = async (uri: string): Promise<void> => {
-        console.warn("processAudio is no longer directly called. Use WebSocket for async processing.");
     };
 
     const handleCopyText = async (): Promise<void> => {
@@ -402,23 +238,13 @@ export default function SpeechToTextScreen() {
         }
     };
 
-    const handleSave = async (): Promise<void> => {
-        if (!recordingUri || !extractedText) return;
-        setIsSaving(true);
-        setError(null);
-        try {
-            const historyId = await mockStorageService.saveSpeechResult(recordingUri, extractedText);
-            Alert.alert("Đã lưu", `Kết quả chuyển đổi đã được lưu vào lịch sử (ID: ${historyId}).`);
-            // Optional: Reset states after saving
-            // setRecordingUri(null);
-            // setExtractedText('');
-        } catch (err: any) {
-            console.error("Save Error:", err);
-            setError(`Lỗi lưu trữ: ${err.message || 'Unknown error'}`);
-            Alert.alert("Lỗi lưu trữ", "Không thể lưu kết quả vào lịch sử.");
-        } finally {
-            setIsSaving(false);
+    const handleSave = () => {
+        if (!user) {
+            Alert.alert("Chưa đăng nhập", "Bạn cần đăng nhập để xem lịch sử.");
+            return;
         }
+        setHasBeenSaved(true);
+        Alert.alert("Đã lưu", "Kết quả này đã được tự động lưu vào lịch sử của bạn.");
     };
 
     const playSound = async (): Promise<void> => {
@@ -494,7 +320,7 @@ export default function SpeechToTextScreen() {
                         <TouchableOpacity
                             style={[styles.iconButton, hasMicrophonePermission === false && styles.buttonDisabled]}
                             onPress={startRecording}
-                            disabled={isLoading || isSaving || hasMicrophonePermission === false || isPlaying}
+                            disabled={isLoading || hasBeenSaved || hasMicrophonePermission === false || isPlaying}
                         >
                             <Ionicons name="mic-circle" size={30} color={hasMicrophonePermission === false ? 'grey' : "white"} />
                             <Text style={styles.iconButtonText}>Ghi âm</Text>
@@ -503,7 +329,7 @@ export default function SpeechToTextScreen() {
                         <TouchableOpacity
                             style={[styles.iconButton, styles.stopButton]}
                             onPress={stopRecording}
-                            disabled={isLoading || isSaving}
+                            disabled={isLoading || hasBeenSaved}
                         >
                             <Ionicons name="stop-circle" size={30} color="white" />
                             <Text style={styles.iconButtonText}>Dừng ghi</Text>
@@ -513,7 +339,7 @@ export default function SpeechToTextScreen() {
                     <TouchableOpacity
                         style={[styles.iconButton]}
                         onPress={pickAudioFile}
-                        disabled={isLoading || isSaving || !!recording || isPlaying} // Vô hiệu hóa khi đang ghi âm hoặc phát nhạc
+                        disabled={isLoading || hasBeenSaved || !!recording || isPlaying} // Vô hiệu hóa khi đang ghi âm hoặc phát nhạc
                     >
                         <Ionicons name="folder-open" size={30} color="white" />
                         <Text style={styles.iconButtonText}>Chọn file</Text>
@@ -533,7 +359,7 @@ export default function SpeechToTextScreen() {
                                     <TouchableOpacity
                                         style={[styles.smallIconButton]}
                                         onPress={playSound}
-                                        disabled={isLoading || isSaving || !recordingUri}
+                                        disabled={isLoading || hasBeenSaved || !recordingUri}
                                     >
                                         <Ionicons name="play-circle" size={24} color="white" />
                                         <Text style={styles.smallIconButtonText}>Phát lại</Text>
@@ -542,7 +368,7 @@ export default function SpeechToTextScreen() {
                                     <TouchableOpacity
                                         style={[styles.smallIconButton, styles.stopPlaybackButton]}
                                         onPress={stopSound}
-                                        disabled={isLoading || isSaving}
+                                        disabled={isLoading || hasBeenSaved}
                                     >
                                         <Ionicons name="stop-circle" size={24} color="white" />
                                         <Text style={styles.smallIconButtonText}>Dừng phát</Text>
@@ -570,13 +396,19 @@ export default function SpeechToTextScreen() {
                                 value={extractedText}
                                 onChangeText={setExtractedText}
                                 multiline
-                                editable={!isLoading && !isSaving && !isPlaying}
+                                editable={!isLoading && !hasBeenSaved && !isPlaying}
                                 style={styles.textInput}
                                 scrollEnabled={true}
                             />
                             <View style={styles.buttonRow}>
-                                <Button title="Sao chép" onPress={handleCopyText} disabled={isLoading || isSaving || isPlaying} />
-                                <Button title={isSaving ? "Đang lưu..." : "Lưu vào lịch sử"} onPress={handleSave} disabled={isLoading || isSaving || isPlaying} />
+                                <Button title="Sao chép" onPress={handleCopyText} disabled={isLoading || hasBeenSaved || isPlaying} />
+                                {user && (
+                                    <Button 
+                                        title={hasBeenSaved ? "Đang lưu..." : "Lưu vào lịch sử"} 
+                                        onPress={handleSave} 
+                                        disabled={isLoading || hasBeenSaved || isPlaying} 
+                                    />
+                                )}
                             </View>
                         </View>
                     ) : null}
