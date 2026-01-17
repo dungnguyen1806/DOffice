@@ -1,7 +1,9 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, Router, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { Platform, TouchableOpacity, Alert } from 'react-native';
+import { useAuth } from '../../context/AuthContext'
+
 import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs'; // Import types nếu cần type chặt chẽ hơn cho options/icons
 
 // Hàm trợ giúp để lấy tên icon phù hợp cho từng platform
@@ -16,6 +18,28 @@ const getIconName = (name: keyof typeof Ionicons.glyphMap, focused: boolean): ke
 };
 
 export default function TabLayout() {
+    const { user, signOut } = useAuth();
+    const router = useRouter();
+
+    const handleLogout = () => {
+        Alert.alert(
+            "Đăng xuất",
+            `Bạn đang đăng nhập với tài khoản:\n${user?.email}\n\nBạn có muốn đăng xuất không?`,
+            [
+                { text: "Hủy", style: "cancel" },
+                { 
+                    text: "Đăng xuất", 
+                    style: "destructive", 
+                    onPress: () => {
+                        signOut();
+                        // Optional: Redirect to OCR or Login after logout
+                        router.replace('/ocr');
+                    } 
+                }
+            ]
+        );
+    };
+
     const screenOptions: BottomTabNavigationOptions | ((props: {
         route: any; // Type 'any' cho route vì type từ expo-router có thể phức tạp
         navigation: any;
@@ -34,7 +58,7 @@ export default function TabLayout() {
             } else if (route.name === 'speech') {
                 iconName = getIconName('mic', focused);
             } else if (route.name === 'history') {
-                iconName = getIconName('list', focused);
+                iconName = user ? getIconName('list', focused) : getIconName('lock-closed-outline', focused);
             }
 
             return <Ionicons name={iconName} size={size} color={color} />;
@@ -63,12 +87,19 @@ export default function TabLayout() {
                     title: 'Nhận diện Âm thanh',
                 }}
             />
-            <Tabs.Screen
-                name="history"
-                options={{
-                    title: 'Lịch sử',
-                }}
-            />
+            {(
+                <Tabs.Screen
+                    name="history"
+                    options={{
+                        title: user ? 'Lịch sử' : 'Tài khoản',
+                        headerRight: user ? () => (
+                            <TouchableOpacity onPress={handleLogout} style={{ marginRight: 15 }}>
+                                <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
+                            </TouchableOpacity>
+                        ) : undefined,
+                    }}
+                />
+            )}
         </Tabs>
     );
 }
