@@ -293,27 +293,27 @@ export default function HistoryScreen() {
         );
     }
 
-    // const renderListHeader = () => (
-    //     <View style={styles.profileHeader}>
-    //         <View style={styles.profileInfo}>
-    //             <View style={styles.avatarPlaceholder}>
-    //                 <Text style={styles.avatarText}>
-    //                     {user.email.charAt(0).toUpperCase()}
-    //                 </Text>
-    //             </View>
-    //             <View>
-    //                 <Text style={styles.welcomeText}>Xin chào,</Text>
-    //                 <Text style={styles.emailText}>{user.email}</Text>
-    //             </View>
-    //         </View>
-    //         <View style={styles.statsContainer}>
-    //             <Text style={styles.statsText}>
-    //                 {/* You could eventually pass total count from backend */}
-    //                 Đang hiển thị {historyItems.length} mục gần nhất
-    //             </Text>
-    //         </View>
-    //     </View>
-    // );
+    const renderListHeader = () => (
+        <View style={styles.profileHeader}>
+            <View style={styles.profileInfo}>
+                <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarText}>
+                        {user.email.charAt(0).toUpperCase()}
+                    </Text>
+                </View>
+                <View>
+                    <Text style={styles.welcomeText}>Xin chào,</Text>
+                    <Text style={styles.emailText}>{user.email}</Text>
+                </View>
+            </View>
+            <View style={styles.statsContainer}>
+                <Text style={styles.statsText}>
+                    {/* You could eventually pass total count from backend */}
+                    Đang hiển thị {historyItems.length} mục gần nhất
+                </Text>
+            </View>
+        </View>
+    );
     
     // Sử dụng ListRenderItemInfo<HistoryItem> để type cho renderItem
     const renderItem = ({ item }: ListRenderItemInfo<HistoryItem>) => {
@@ -402,7 +402,7 @@ export default function HistoryScreen() {
                 data={historyItems}
                 renderItem={renderItem}
                 keyExtractor={(item) => item.id.toString()}
-                // ListHeaderComponent={renderListHeader}
+                ListHeaderComponent={renderListHeader}
                 // contentContainerStyle={styles.listContentContainer}
                 onRefresh={() => loadData(true)}
                 refreshing={isLoading}
@@ -554,6 +554,70 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
     },
+    // container: {
+    //     flex: 1,
+    //     backgroundColor: '#f0f0f0',
+    // },
+    // listContentContainer: {
+    //     paddingVertical: 5,
+    //     flexGrow: 1,
+    // },
+    // itemContainer: {
+    //     backgroundColor: '#fff',
+    //     padding: 12,
+    //     marginVertical: 4,
+    //     marginHorizontal: 8,
+    //     borderRadius: 8,
+    //     flexDirection: 'row',
+    //     alignItems: 'center',
+    //     elevation: 1,
+    //     shadowColor: '#000',
+    //     shadowOffset: { width: 0, height: 1 },
+    //     shadowOpacity: 0.1,
+    //     shadowRadius: 1,
+    // },
+    // itemContent: {
+    //     flex: 1,
+    //     marginRight: 8,
+    // },
+    // itemHeader: {
+    //     flexDirection: 'row',
+    //     alignItems: 'center',
+    //     marginBottom: 5,
+    // },
+    // itemIcon: {
+    //     marginRight: 10,
+    //     width: 30, // Đảm bảo icon có kích thước cố định như thumbnail
+    //     textAlign: 'center', // Căn giữa icon nếu cần
+    // },
+    // itemThumbnail: {
+    //     width: 30,
+    //     height: 30,
+    //     borderRadius: 4,
+    //     marginRight: 10,
+    //     backgroundColor: '#e0e0e0'
+    // },
+    // itemText: {
+    //     fontSize: 15,
+    //     color: '#333',
+    //     flexShrink: 1,
+    // },
+    // itemDate: {
+    //     fontSize: 12,
+    //     color: 'grey',
+    //     marginTop: 4,
+    // },
+    // itemActions: {
+    //     flexDirection: 'row',
+    //     justifyContent: 'flex-end',
+    //     borderTopWidth: 1,
+    //     borderTopColor: '#f0f0f0',
+    //     paddingTop: 10,
+    // },
+    // actionButton: {
+    //     padding: 5,
+    //     marginLeft: 20,
+    // },
     errorText: {
         color: 'red',
         textAlign: 'center',
@@ -570,6 +634,13 @@ const styles = StyleSheet.create({
         color: 'darkgrey',
         textAlign: 'center',
     },
+    // guestContainer: {
+    //     flex: 1,
+    //     justifyContent: 'center',
+    //     alignItems: 'center',
+    //     padding: 30,
+    //     backgroundColor: '#f9f9f9',
+    // },
     guestIconCircle: {
         width: 100,
         height: 100,
@@ -579,6 +650,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 20,
     },
+    // guestTitle: {
+    //     fontSize: 22,
+    //     fontWeight: 'bold',
+    //     marginBottom: 10,
+    //     color: '#333',
+    // },
     guestDescription: {
         fontSize: 16,
         color: '#666',
@@ -598,6 +675,94 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 16,
     },
+
+    // // --- Profile Header Styles ---
+    profileHeader: {
+        backgroundColor: '#fff',
+        padding: 15,
+        marginBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
+    },
+    profileInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    avatarPlaceholder: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#1E90FF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 15,
+    },
+    avatarText: {
+        color: '#fff',
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    welcomeText: {
+        fontSize: 14,
+        color: 'grey',
+    },
+    emailText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+    statsContainer: {
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
+        paddingTop: 10,
+    },
+    statsText: {
+        fontSize: 12,
+        color: 'grey',
+    },
+    // emptyContainer: {
+    //     alignItems: 'center', 
+    //     marginTop: 50
+    // },
+    // modalOverlay: {
+    //     flex: 1,
+    //     backgroundColor: 'rgba(0,0,0,0.5)',
+    //     justifyContent: 'center',
+    //     alignItems: 'center',
+    // },
+    // modalView: {
+    //     width: '90%',
+    //     height: '70%',
+    //     backgroundColor: 'white',
+    //     borderRadius: 20,
+    //     padding: 20,
+    //     elevation: 5,
+    // },
+    // modalHeader: {
+    //     flexDirection: 'row',
+    //     justifyContent: 'space-between',
+    //     alignItems: 'center',
+    //     marginBottom: 15,
+    //     borderBottomWidth: 1,
+    //     borderBottomColor: '#eee',
+    //     paddingBottom: 10,
+    // },
+    // modalTitle: { fontSize: 18, fontWeight: 'bold' },
+    // modalBody: { flex: 1 },
+    // modalLabel: { fontWeight: 'bold', marginTop: 10, marginBottom: 5, color: '#555' },
+    // modalText: { fontSize: 16, lineHeight: 24, color: '#333' },
+    // modalFooter: {
+    //     borderTopWidth: 1,
+    //     borderTopColor: '#eee',
+    //     paddingTop: 15,
+    //     alignItems: 'flex-end',
+    // },
+    // modalButton: {
+    //     paddingVertical: 10,
+    //     paddingHorizontal: 20,
+    //     borderRadius: 10,
+    // },
     // modalButtonText: { color: 'white', fontWeight: 'bold' }
     container: { flex: 1, backgroundColor: '#f0f0f0' },
     guestContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },

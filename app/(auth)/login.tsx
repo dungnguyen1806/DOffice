@@ -100,7 +100,7 @@ export default function LoginScreen() {
       />
       <TextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder="Mật khẩu"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -109,7 +109,7 @@ export default function LoginScreen() {
       {loading ? (
         <ActivityIndicator size="large" color="#0000ff" />
       ) : (
-        <Button title="Sign In" onPress={handleLogin} />
+        <Button title="Đăng nhập" onPress={handleLogin} />
       )}
       
       <Pressable onPress={() => router.push('/signup')} style={styles.link}>

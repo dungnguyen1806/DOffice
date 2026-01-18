@@ -11,15 +11,15 @@ export default function AuthLayout() {
         Here, we can configure options for the entire stack.
       */}
       <Stack.Screen
-        name="login" // This refers to login.tsx
+        name="Đăng nhập" // This refers to login.tsx
         options={{
-          headerShown: true, // Hides the top navigation bar for a cleaner look
+          headerShown: true, 
         }}
       />
       <Stack.Screen
-        name="signup" // This refers to signup.tsx
+        name="Đăng ký" // This refers to signup.tsx
         options={{
-          headerShown: true, // Also hide the header on the signup screen
+          headerShown: true, 
         }}
       />
     </Stack>
