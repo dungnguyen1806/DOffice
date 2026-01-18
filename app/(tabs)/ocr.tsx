@@ -267,7 +267,7 @@ export default function OcrScreen() {
 
             {/* Thông báo khi chưa chọn ảnh */}
             {!imageUri && !isLoading && (
-                <Text style={styles.infoText}>Vui lòng chụp ảnh hoặc chọn ảnh từ thư viện để bắt đầu.</Text>
+                <Text style={styles.infoText}>Nhấn "Chụp ảnh" hoặc chọn ảnh từ thư viện để bắt đầu.</Text>
             )}
         </ScrollView>
     );

@@ -16,7 +16,7 @@ export default function SignUpScreen() {
 
   const handleSignUp = async () => {
     if (password !== confirmPassword) {
-      setError("Passwords don't match.");
+      setError("Mật khẩu không đúng");
       return;
     }
     setError('');
@@ -69,14 +69,14 @@ export default function SignUpScreen() {
       />
       <TextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder="Mật khẩu"
         value={password}
         onChangeText={setPassword}
         secureTextEntry
       />
       <TextInput
         style={styles.input}
-        placeholder="Confirm Password"
+        placeholder="Nhập lại mật khẩu"
         value={confirmPassword}
         onChangeText={setConfirmPassword}
         secureTextEntry
@@ -85,7 +85,7 @@ export default function SignUpScreen() {
       {loading ? (
         <ActivityIndicator size="large" color="#0000ff" />
       ) : (
-        <Button title="Sign Up" onPress={handleSignUp} />
+        <Button title="Đăng ký" onPress={handleSignUp} />
       )}
       
       <Pressable onPress={() => router.push('/login')} style={styles.link}>

@@ -431,7 +431,7 @@ export default function SpeechToTextScreen() {
 
             {/* Thông báo khi chưa ghi âm */}
             {!recordingUri && !isLoading && !recording && (
-                <Text style={styles.infoText}>Nhấn "Bắt đầu ghi âm" hoặc chọn file âm thanh.</Text>
+                <Text style={styles.infoText}>Nhấn "Ghi âm" hoặc chọn file âm thanh.</Text>
             )}
         </ScrollView>
     );
