@@ -64,6 +64,12 @@ export const submitJob = (fileUri: string) => {
     });
 };
 
+export const updateJobText = (jobId: number, newText: string) => {
+    return api.patch(`/transcriptions/${jobId}`, {
+        transcribed_text: newText
+    });
+};
+
 export const deleteJob = (jobId: number) => {
     return api.delete(`/transcriptions/${jobId}`);
 };
