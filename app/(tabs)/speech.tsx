@@ -8,7 +8,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '@/context/AuthContext';
-import { submitJob, BACKEND_WS_URL } from '../../api/client';
+import { submitJob, BACKEND_WS_URL, updateJobText } from '../../api/client';
 import { JobStatus, WebSocketMessage } from '../../types/jobs';
 
 export default function SpeechToTextScreen() {
@@ -18,6 +18,7 @@ export default function SpeechToTextScreen() {
     const [recording, setRecording] = useState<Audio.Recording | undefined>();
     const [recordingUri, setRecordingUri] = useState<string | null>(null);
     const [extractedText, setExtractedText] = useState<string>('');
+    const [isSaving, setIsSaving] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     
     const [hasBeenSaved, setHasBeenSaved] = useState<boolean>(false);
@@ -238,13 +239,26 @@ export default function SpeechToTextScreen() {
         }
     };
 
-    const handleSave = () => {
-        if (!user) {
-            Alert.alert("Chưa đăng nhập", "Bạn cần đăng nhập để xem lịch sử.");
+    const handleSave = async () => {
+        if (typeof currentJobId !== 'number') {
+            Alert.alert("Lỗi", "Không thể lưu chỉnh sửa cho phiên khách.");
             return;
         }
-        setHasBeenSaved(true);
-        Alert.alert("Đã lưu", "Kết quả này đã được tự động lưu vào lịch sử của bạn.");
+
+        setIsSaving(true);
+        setError(null);
+
+        try {
+            await updateJobText(currentJobId, extractedText);
+            setHasBeenSaved(true);
+            Alert.alert("Thành công", "Nội dung chỉnh sửa đã được cập nhật vào lịch sử.");
+        } catch (err: any) {
+            console.error("Update error:", err);
+            setError("Không thể cập nhật nội dung.");
+            Alert.alert("Lỗi", "Đã xảy ra lỗi khi lưu chỉnh sửa.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const playSound = async (): Promise<void> => {

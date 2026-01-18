@@ -9,7 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { submitJob, BACKEND_WS_URL } from '../../api/client';
+import { submitJob, BACKEND_WS_URL, updateJobText } from '../../api/client';
 import { JobStatus, WebSocketMessage } from '../../types/jobs'; 
 
 const screenWidth = Dimensions.get('window').width;
@@ -173,13 +173,26 @@ export default function OcrScreen() {
         }
     };
 
-    const handleSave = () => {
-        if (!user) {
-            Alert.alert("Chưa đăng nhập", "Bạn cần đăng nhập để xem lịch sử.");
+    const handleSave = async () => {
+        if (typeof currentJobId !== 'number') {
+            Alert.alert("Lỗi", "Không thể lưu chỉnh sửa cho phiên khách. Vui lòng đăng nhập và thử lại.");
             return;
         }
-        setHasBeenSaved(true);
-        Alert.alert("Đã lưu", "Kết quả này đã được tự động lưu vào lịch sử của bạn.");
+
+        setIsSaving(true);
+        setError(null);
+
+        try {
+            await updateJobText(currentJobId, extractedText);
+            setHasBeenSaved(true);
+            Alert.alert("Thành công", "Nội dung chỉnh sửa đã được cập nhật vào lịch sử.");
+        } catch (err: any) {
+            console.error("Update error:", err);
+            setError("Không thể cập nhật nội dung.");
+            Alert.alert("Lỗi", "Đã xảy ra lỗi khi lưu chỉnh sửa.");
+        } finally {
+            setIsSaving(false);
+        }
     };
     // --- Kết thúc Các hàm xử lý ---
 
