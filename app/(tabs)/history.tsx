@@ -184,11 +184,6 @@ export default function HistoryScreen() {
             Alert.alert("Lỗi", "Không thể tải xuống hoặc chia sẻ file.");
         }
     };
-
-    const handleViewEdit = (item: HistoryItem) => {
-        setSelectedItem(item);
-        setModalVisible(true);
-    };
     // --- Kết thúc Các hàm xử lý cho Item ---
 
     // --- Xử lý media --- 
@@ -325,7 +320,7 @@ export default function HistoryScreen() {
 
         return (
             <View style={styles.itemContainer}>
-                <TouchableOpacity style={styles.itemContent} onPress={() => handleViewEdit(item)}>
+                <TouchableOpacity style={styles.itemContent} onPress={() => openModal(item)}>
                     <View style={styles.iconContainer}>
                         {isImage && item.original_file_url ? (
                             <Image source={{uri: item.original_file_url}} style={styles.thumbnail} />
