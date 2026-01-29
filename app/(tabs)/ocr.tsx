@@ -1,159 +1,32 @@
+// app/(tabs)/ocr.tsx
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, Button, Image, TextInput, StyleSheet, ScrollView,
-    ActivityIndicator, Alert, Platform, Dimensions, TouchableOpacity
+    ActivityIndicator, Alert, Dimensions, TouchableOpacity
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
-import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
-
-// Định nghĩa trạng thái Job (phải khớp với backend)
-enum JobStatus {
-    PENDING = "PENDING",
-    PROCESSING = "PROCESSING",
-    COMPLETED = "COMPLETED",
-    FAILED = "FAILED",
-}
-
-interface WebSocketMessage {
-    job_id: string;
-    status: JobStatus;
-    text?: string; // Tên property khớp với backend
-    error?: string; // Tên property khớp với backend
-    filename?: string;
-    type: 'status_update' | 'job_completed' | 'job_failed' | 'error';
-}
-
-interface OcrService {
-    submitImageForOcr: (imageUri: string) => Promise<string>;
-    listenToOcrJob: (jobId: string, onUpdate: (message: WebSocketMessage) => void) => WebSocket;
-}
-
-// Định nghĩa URL backend WebSocket
-const BACKEND_BASE_URL = 'https://doffice-backend.onrender.com/api/v1'; // Base URL cho API
-const BACKEND_WS_BASE_URL = 'wss://doffice-backend.onrender.com/api/v1'; // Base URL cho WebSocket (ws hoặc wss)
-
-
-// interface OcrService {
-//     processImage: (imageUri: string) => Promise<string>;
-// }
-
-interface MockStorageService {
-    saveOcrResult: (imageUri: string, textContent: string) => Promise<string>; // Trả về ID dạng string
-}
-
-const OcrService: OcrService = {
-    // Hàm gửi ảnh và nhận job_id
-    submitImageForOcr: async (imageUri: string): Promise<string> => {
-        console.log('[OCR Service] Submitting image for OCR:', imageUri);
-
-        const formData = new FormData();
-
-        const filename = imageUri.split('/').pop() || `photo.jpg`;
-        const match = /\.(\w+)$/.exec(filename || '');
-        const fileType = match ? `image/${match[1]}` : `image`;
-
-        formData.append('file', {
-            uri: imageUri,
-            name: filename,
-            type: fileType,
-        } as any); // Type assertion for FormData.append is often needed in RN
-
-        const response = await fetch(`${BACKEND_BASE_URL}/submit`, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                // Do not set Content-Type for FormData, browser/RN will do it with boundary
-                // 'Content-Type': 'multipart/form-data',
-            },
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to submit image for OCR: ${response.status} - ${errorText}`);
-        }
-
-        const result: { job_id: string; status: string; message: string } = await response.json();
-        console.log('[OCR Service] Job submitted:', result.job_id);
-        return result.job_id;
-    },
-
-    // Hàm mở kết nối WebSocket và lắng nghe cập nhật
-    listenToOcrJob: (jobId: string, onUpdate: (message: WebSocketMessage) => void): WebSocket => {
-        const wsUrl = `${BACKEND_WS_BASE_URL}/ws/status/${jobId}`;
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-            console.log(`[WebSocket] Connected to ${wsUrl}`);
-            onUpdate({ job_id: jobId, status: JobStatus.PENDING, type: 'status_update', filename: '' }); // Initial state
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const message: WebSocketMessage = JSON.parse(event.data as string);
-                console.log(`[WebSocket] Received message for job ${jobId}:`, message);
-                onUpdate(message);
-            } catch (e) {
-                console.error(`[WebSocket] Failed to parse message for job ${jobId}:`, event.data, e);
-                onUpdate({
-                    job_id: jobId,
-                    status: JobStatus.FAILED,
-                    error: `Lỗi phân tích dữ liệu từ server: ${e}`,
-                    type: 'error'
-                });
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error(`[WebSocket] Error for job ${jobId}:`, error);
-            onUpdate({
-                job_id: jobId,
-                status: JobStatus.FAILED,
-                error: `Lỗi kết nối WebSocket: ${error || 'Unknown error'}`,
-                type: 'error'
-            });
-        };
-
-        ws.onclose = (event) => {
-            console.log(`[WebSocket] Closed for job ${jobId}: Code=${event.code}, Reason=${event.reason}, Clean=${event.wasClean}`);
-            // if (!event.wasClean) {
-            //     // If the connection was not closed cleanly, it might be an error
-            //     onUpdate({
-            //         job_id: jobId,
-            //         status: JobStatus.FAILED,
-            //         error: `Kết nối WebSocket bị đóng bất ngờ (Code: ${event.code})`,
-            //         type: 'error'
-            //     });
-            // }
-        };
-
-        return ws;
-    }
-};
-
-const mockStorageService: MockStorageService = {
-    saveOcrResult: async (imageUri, textContent) => {
-        console.log(`[Mock Storage TS] Saving OCR result for image: ${imageUri}`);
-        console.log(`[Mock Storage TS] Text content: ${textContent.substring(0, 50)}...`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        return `ocr_ts_${Date.now()}`;
-    }
-};
-// --- Kết thúc Giả lập Service ---
+import { useAuth } from '../../context/AuthContext';
+import { submitJob, BACKEND_WS_URL, updateJobText } from '../../api/client';
+import { JobStatus, WebSocketMessage } from '../../types/jobs'; 
 
 const screenWidth = Dimensions.get('window').width;
 
 export default function OcrScreen() {
+    const { user } = useAuth();
+
     // --- State với Type ---
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [extractedText, setExtractedText] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [isSaving, setIsSaving] = useState<boolean>(false);
+    const [hasBeenSaved, setHasBeenSaved] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
     const [hasGalleryPermission, setHasGalleryPermission] = useState<boolean | null>(null);
-    const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+    const [currentJobId, setCurrentJobId] = useState<number | string | null>(null);
     const wsRef = useRef<WebSocket | null>(null); // Ref để lưu trữ đối tượng WebSocket
 
 
@@ -184,10 +57,50 @@ export default function OcrScreen() {
             if (wsRef.current) {
                 console.log("[WebSocket Cleanup] Closing previous WebSocket.");
                 wsRef.current.close();
-                wsRef.current = null;
             }
         };
     }, []); // Chạy một lần khi mount và cleanup khi unmount
+
+    // Chuyển hàm listen vào trong Screen, không sử dụng interface
+    const listenToJob = (jobId: number | string) => {
+        const wsUrl = `${BACKEND_WS_URL}/ws/status/${jobId}`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => console.log(`[WebSocket] Connected for job ${jobId}`);
+        ws.onmessage = (event) => {
+            try {
+                const message: WebSocketMessage = JSON.parse(event.data);
+                if (String(message.job_id) === String(jobId)) { // Ensure message is for the current job
+                    switch (message.type) {
+                        case 'status_update':
+                            if (message.status === JobStatus.PROCESSING) setIsLoading(true);
+                            break;
+                        case 'job_completed':
+                            setExtractedText(message.text || '');
+                            setIsLoading(false);
+                            setHasBeenSaved(false); // Reset save confirmation for new result
+                            break;
+                        case 'job_failed':
+                        case 'error':
+                            setError(`Lỗi: ${message.error || 'Unknown error'}`);
+                            setIsLoading(false);
+                            break;
+                    }
+                }
+            } catch (e) {
+                console.error(`[WebSocket] Failed to parse message:`, e);
+                setError('Lỗi kết nối máy chủ.');
+                setIsLoading(false);
+            }
+        };
+        ws.onerror = (error) => {
+            console.error(`[WebSocket] Error for job ${jobId}:`, error);
+            setError('Lỗi kết nối WebSocket.');
+            setIsLoading(false);
+        };
+        ws.onclose = () => console.log(`[WebSocket] Closed for job ${jobId}`);
+    };
 
     // --- Các hàm xử lý với Type ---
     const handleAction = async (actionType: 'camera' | 'gallery'): Promise<void> => {
@@ -213,7 +126,6 @@ export default function OcrScreen() {
         if (wsRef.current) {
             console.log("[WebSocket] Closing existing WebSocket for new action.");
             wsRef.current.close();
-            wsRef.current = null;
         }
 
         setImageUri(null);
@@ -221,80 +133,33 @@ export default function OcrScreen() {
         setError(null);
         setIsLoading(true); // Bắt đầu loading khi chọn ảnh
         setCurrentJobId(null); // Reset current job ID
-
-        // TODO: start from here
+        setHasBeenSaved(false);
 
         try {
-            // Sử dụng type ImagePickerResult từ expo-image-picker
-            const result: ImagePicker.ImagePickerResult = await launchFunction({
-                allowsEditing: false,
-                quality: 0.8,
-            });
+            const result = await (actionType === 'camera' 
+                ? ImagePicker.launchCameraAsync 
+                : ImagePicker.launchImageLibraryAsync
+            )({ allowsEditing: false, quality: 0.8 });
 
-            // Kiểm tra kỹ hơn với type
-            if (!result.canceled && result.assets && result.assets.length > 0) {
-                const selectedAsset = result.assets[0];
-                if (selectedAsset.uri) {
-                    setImageUri(selectedAsset.uri);
-                    const jobId = await OcrService.submitImageForOcr(selectedAsset.uri);
-                    setCurrentJobId(jobId);
+            if (!result.canceled && result.assets && result.assets[0].uri) {
+                const uri = result.assets[0].uri;
+                setImageUri(uri);
 
-                    // Mở WebSocket và lắng nghe cập nhật
-                    wsRef.current = OcrService.listenToOcrJob(jobId, (message) => {
-                        // Cập nhật UI dựa trên thông điệp WebSocket
-                        if (message.job_id === jobId) { // Đảm bảo thông điệp đúng job
-                            switch (message.type) {
-                                case 'status_update':
-                                    if (message.status === JobStatus.PROCESSING) {
-                                        setIsLoading(true);
-                                        setError(null);
-                                    } else if (message.status === JobStatus.PENDING) {
-                                        // Vẫn đang chờ, giữ loading
-                                        setIsLoading(true);
-                                        setError(null);
-                                    }
-                                    console.log(`Job ${jobId} Status: ${message.status}`);
-                                    break;
-                                case 'job_completed':
-                                    setExtractedText(message.text || '');
-                                    setIsLoading(false);
-                                    setError(null);
-                                    console.log(`Job ${jobId} Completed! Result:`, message.text);
-                                    // Optionally close websocket here if it's job-specific
-                                    if (wsRef.current) {
-                                        wsRef.current.close();
-                                        wsRef.current = null;
-                                    }
-                                    break;
-                                case 'job_failed':
-                                case 'error': // Backend gửi type 'error' nếu job_id không tồn tại hoặc lỗi chung
-                                    setError(`Lỗi: ${message.error || 'Unknown error'}`);
-                                    setIsLoading(false);
-                                    setExtractedText('');
-                                    console.error(`Job ${jobId} Failed! Error:`, message.error);
-                                    if (wsRef.current) {
-                                        wsRef.current.close();
-                                        wsRef.current = null;
-                                    }
-                                    break;
-                            }
-                        }
-                    });
-                } else {
-                    setIsLoading(false); // Ngừng loading nếu không có URI hợp lệ
-                }
+                // --- Use the centralized API client ---
+                const response = await submitJob(uri);
+                const { job_id } = response.data; 
+                setCurrentJobId(job_id);
+                
+                // --- Start listening for updates ---
+                listenToJob(job_id);
             } else {
-                setIsLoading(false); // Ngừng loading nếu hủy chọn ảnh
+                setIsLoading(false); // User cancelled selection
             }
-        } catch (err: any) { // Bắt lỗi với type any hoặc unknown
-            console.error(`Error launching ${actionType}:`, err);
-            setError(`Không thể ${actionType === 'camera' ? 'chụp ảnh' : 'chọn ảnh'}. Lỗi: ${err.message || 'Unknown error'}`);
-            Alert.alert("Lỗi", `Đã xảy ra lỗi khi ${actionType === 'camera' ? 'mở camera' : 'mở thư viện'}.`);
+        } catch (err: any) {
+            console.error(`Error in handleAction:`, err.response?.data || err.message);
+            setError(`Không thể gửi yêu cầu. Lỗi: ${err.response?.data?.detail || err.message}`);
+            setIsLoading(false);
         }
-    };
-
-    const processImage = async (uri: string): Promise<void> => {
-        console.warn("processImage is no longer directly called. Use WebSocket for async processing.");
     };
 
     const handleCopyText = async (): Promise<void> => {
@@ -308,20 +173,23 @@ export default function OcrScreen() {
         }
     };
 
-    const handleSave = async (): Promise<void> => {
-        if (!imageUri || !extractedText) return;
+    const handleSave = async () => {
+        if (typeof currentJobId !== 'number') {
+            Alert.alert("Lỗi", "Không thể lưu chỉnh sửa cho phiên khách. Vui lòng đăng nhập và thử lại.");
+            return;
+        }
+
         setIsSaving(true);
         setError(null);
+
         try {
-            const historyId = await mockStorageService.saveOcrResult(imageUri, extractedText);
-            Alert.alert("Đã lưu", `Kết quả nhận diện đã được lưu vào lịch sử (ID: ${historyId}).`);
-            // Optional Reset
-            // setImageUri(null);
-            // setExtractedText('');
+            await updateJobText(currentJobId, extractedText);
+            setHasBeenSaved(true);
+            Alert.alert("Thành công", "Nội dung chỉnh sửa đã được cập nhật vào lịch sử.");
         } catch (err: any) {
-            console.error("Save Error:", err);
-            setError(`Lỗi lưu trữ: ${err.message || 'Unknown error'}`);
-            Alert.alert("Lỗi lưu trữ", "Không thể lưu kết quả vào lịch sử.");
+            console.error("Update error:", err);
+            setError("Không thể cập nhật nội dung.");
+            Alert.alert("Lỗi", "Đã xảy ra lỗi khi lưu chỉnh sửa.");
         } finally {
             setIsSaving(false);
         }
@@ -383,8 +251,14 @@ export default function OcrScreen() {
                                 scrollEnabled={true}
                             />
                             <View style={styles.buttonRow}>
-                                <Button title="Sao chép" onPress={handleCopyText} disabled={isLoading || isSaving} />
-                                <Button title={isSaving ? "Đang lưu..." : "Lưu vào lịch sử"} onPress={handleSave} disabled={isLoading || isSaving} />
+                                <Button title="Sao chép" onPress={handleCopyText} />
+                                {user && (
+                                    <Button 
+                                        title={hasBeenSaved ? "Đang lưu..." : "Lưu vào lịch sử"} 
+                                        onPress={handleSave} 
+                                        disabled={hasBeenSaved} 
+                                    />
+                                )}
                             </View>
                         </View>
                     ) : null}
@@ -393,7 +267,7 @@ export default function OcrScreen() {
 
             {/* Thông báo khi chưa chọn ảnh */}
             {!imageUri && !isLoading && (
-                <Text style={styles.infoText}>Vui lòng chụp ảnh hoặc chọn ảnh từ thư viện để bắt đầu.</Text>
+                <Text style={styles.infoText}>Nhấn "Chụp ảnh" hoặc chọn ảnh từ thư viện để bắt đầu.</Text>
             )}
         </ScrollView>
     );
